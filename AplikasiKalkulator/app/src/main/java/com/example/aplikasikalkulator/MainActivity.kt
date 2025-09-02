@@ -33,108 +33,76 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+// LOGIC YANG SIMPLE DAN WORKING BRO
 class CalculatorLogic {
-    private var displayFormula = ""  // Buat nyimpen formula yang ditampilin
-    private var operands = mutableListOf<Double>()  // Buat nyimpen angka-angka
-    private var operators = mutableListOf<String>()  // Buat nyimpen operator
-    private var currentInput = ""  // Buat nyimpen input saat ini
-    private var result: String = ""  // Buat nyimpen hasil akhir
+    private var currentNumber = ""
+    private var previousNumber = ""
+    private var operation: String = ""
+    private var result: String = ""
 
     fun onNumberClick(number: String): String {
+        // Reset jika ada hasil sebelumnya
         if (result.isNotEmpty() && !result.contains("Error")) {
-            // Reset semua kalau ada hasil sebelumnya
-            reset()
-            if (number == ".") {
-                currentInput = "0."
-            } else {
-                currentInput = number
-            }
+            currentNumber = if (number == ".") "0." else number
+            previousNumber = ""
+            operation = ""
+            result = ""
         } else {
-            currentInput += number
+            // Cek apakah angka sudah ada titik desimal
+            if (number == "." && currentNumber.contains(".")) {
+                return getCurrentDisplay()
+            }
+            currentNumber += number
         }
         return getCurrentDisplay()
     }
 
     fun onOperationClick(op: String): String {
+        // Jika ada hasil sebelumnya, pakai itu sebagai starting number
         if (result.isNotEmpty() && !result.contains("Error")) {
-            // Kalau ada hasil sebelumnya, pakai itu sebagai starting point
-            currentInput = result
+            previousNumber = result
+            currentNumber = ""
+            operation = op
             result = ""
         }
-
-        if (currentInput.isNotEmpty()) {
-            // Simpan angka yang sedang diinput
-            operands.add(currentInput.toDoubleOrNull() ?: 0.0)
-            currentInput = ""
-        } else if (operands.isEmpty()) {
-            // Kalau belum ada angka sama sekali, pakai 0
-            operands.add(0.0)
+        // Jika sudah ada previous, current, dan operation, HITUNG DULU baru chaining
+        else if (previousNumber.isNotEmpty() && currentNumber.isNotEmpty() && operation.isNotEmpty()) {
+            val resultValue = performCalculation()
+            if (resultValue != null) {
+                previousNumber = formatResult(resultValue)
+            } else {
+                return "Error"
+            }
+            currentNumber = ""
+            operation = op
         }
-
-        // Simpan operator
-        operators.add(op)
-
+        // Jika baru pertama kali input: 2 [×]
+        else if (currentNumber.isNotEmpty()) {
+            previousNumber = currentNumber
+            currentNumber = ""
+            operation = op
+        }
+        // Jika belum ada angka tapi klik operator (misal klik + dulu)
+        else if (previousNumber.isEmpty() && currentNumber.isEmpty()) {
+            previousNumber = "0"
+            operation = op
+        }
+        // Jika sudah ada previous number dan operation, update operation aja
+        else if (previousNumber.isNotEmpty() && currentNumber.isEmpty()) {
+            operation = op
+        }
         return getCurrentDisplay()
     }
 
     fun onEqualsClick(): String {
-        if (result.isNotEmpty() && !result.contains("Error")) {
-            return result
+        if (previousNumber.isNotEmpty() && currentNumber.isNotEmpty() && operation.isNotEmpty()) {
+            val resultValue = performCalculation()
+            result = if (resultValue != null) formatResult(resultValue) else "Error"
+            currentNumber = ""
+            previousNumber = ""
+            operation = ""
         }
-
-        // Tambahin angka terakhir ke list
-        if (currentInput.isNotEmpty()) {
-            operands.add(currentInput.toDoubleOrNull() ?: 0.0)
-            currentInput = ""
-        } else if (operands.isEmpty()) {
-            operands.add(0.0)
-        }
-
-        // Hitung semua operasi
-        if (operands.isNotEmpty() && operators.isNotEmpty()) {
-            try {
-                var calculationResult = operands[0]
-
-                for (i in operators.indices) {
-                    val nextOperand = if (i + 1 < operands.size) operands[i + 1] else 0.0
-                    calculationResult = when (operators[i]) {
-                        "+" -> calculationResult + nextOperand
-                        "-" -> calculationResult - nextOperand
-                        "×" -> calculationResult * nextOperand
-                        "÷" -> {
-                            if (nextOperand != 0.0) {
-                                calculationResult / nextOperand
-                            } else {
-                                throw ArithmeticException("Cannot divide by zero")
-                            }
-                        }
-                        else -> nextOperand
-                    }
-                }
-
-                result = if (calculationResult == calculationResult.toLong().toDouble()) {
-                    calculationResult.toLong().toString()
-                } else {
-                    String.format("%.8f", calculationResult).trimEnd('0').trimEnd('.')
-                }
-
-                // Reset untuk perhitungan berikutnya
-                operands.clear()
-                operators.clear()
-
-            } catch (e: Exception) {
-                result = "Error"
-                reset()
-            }
-        } else if (currentInput.isNotEmpty()) {
-            result = currentInput
-            currentInput = ""
-        } else if (operands.isNotEmpty()) {
-            result = operands[0].toString()
-            operands.clear()
-        }
-
-        return result
+        return result.ifEmpty { "0" }
     }
 
     fun onClearClick(): String {
@@ -146,61 +114,60 @@ class CalculatorLogic {
         if (result.isNotEmpty() && !result.contains("Error")) {
             reset()
             return "0"
-        } else if (currentInput.isNotEmpty()) {
-            currentInput = currentInput.dropLast(1)
-            return if (currentInput.isEmpty()) "0" else getCurrentDisplay()
-        } else if (operators.isNotEmpty()) {
-            operators.removeLast()
+        } else if (currentNumber.isNotEmpty()) {
+            currentNumber = currentNumber.dropLast(1)
             return getCurrentDisplay()
-        } else if (operands.isNotEmpty()) {
-            operands.removeLast()
-            return if (operands.isEmpty()) "0" else getCurrentDisplay()
+        } else if (operation.isNotEmpty()) {
+            operation = ""
+            return getCurrentDisplay()
+        } else if (previousNumber.isNotEmpty()) {
+            previousNumber = ""
+            return "0"
         }
         return "0"
     }
 
+    private fun performCalculation(): Double? {
+        return try {
+            val prev = previousNumber.toDouble()
+            val current = currentNumber.toDouble()
+            when (operation) {
+                "+" -> prev + current
+                "-" -> prev - current
+                "×" -> prev * current
+                "÷" -> {
+                    if (current != 0.0) prev / current
+                    else throw ArithmeticException("Cannot divide by zero")
+                }
+                else -> current
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun formatResult(value: Double): String {
+        return if (value == value.toLong().toDouble()) {
+            value.toLong().toString()
+        } else {
+            String.format("%.8f", value).trimEnd('0').trimEnd('.')
+        }
+    }
+
     private fun reset() {
-        operands.clear()
-        operators.clear()
-        currentInput = ""
+        currentNumber = ""
+        previousNumber = ""
+        operation = ""
         result = ""
     }
 
     private fun getCurrentDisplay(): String {
         return when {
             result.isNotEmpty() -> result
-            else -> {
-                val formula = StringBuilder()
-                for (i in operands.indices) {
-                    val operand = operands[i]
-                    val formattedOperand = if (operand == operand.toLong().toDouble()) {
-                        operand.toLong().toString()
-                    } else {
-                        operand.toString()
-                    }
-                    formula.append(formattedOperand)
-                    if (i < operators.size) {
-                        formula.append(" ").append(operators[i]).append(" ")
-                    }
-                }
-
-                if (currentInput.isNotEmpty()) {
-                    if (formula.isNotEmpty()) {
-                        formula.append(" ").append(currentInput)
-                    } else {
-                        formula.append(currentInput)
-                    }
-                } else if (operators.isNotEmpty() && operators.size > operands.size) {
-                    val lastOperator = operators.last()
-                    formula.append(" ").append(lastOperator)
-                }
-
-                if (formula.isEmpty()) {
-                    "0"
-                } else {
-                    formula.toString()
-                }
-            }
+            currentNumber.isNotEmpty() && previousNumber.isNotEmpty() -> "$previousNumber $operation $currentNumber"
+            operation.isNotEmpty() -> "$previousNumber $operation"
+            previousNumber.isNotEmpty() -> previousNumber
+            else -> currentNumber.ifEmpty { "0" }
         }
     }
 }
